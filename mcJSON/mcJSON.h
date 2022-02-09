@@ -28,6 +28,7 @@ typedef struct printbuffer
     int length;
 } printbuffer;
 
-
+mcJSON_Bool printValue(mcJSON *obj, printbuffer *buffer);
 void deleteItem(mcJSON *obj);
 mcJSON_Bool addObjToArray(mcJSON *obj,mcJSON *item,const char *const key);
+mcJSON_Bool printNumber(int *number, printbuffer *buffer);

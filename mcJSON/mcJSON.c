@@ -154,92 +154,154 @@ void deleteItem(mcJSON *obj)
     }
 }
 
-unsigned char *getCurrentPointer(printbuffer *buffer)
+unsigned char *getCurrentPointer(printbuffer *buffer, size_t needed)
 {
-    if (buffer == NULL)
+    if (buffer == NULL || buffer->offset > buffer->length)
     {
         return NULL;
     }
-    // length += buffer->offset;
-    return buffer->buffer + buffer->offset;
+    needed += buffer->offset;
+    if (needed < buffer->length)
+    {
+        return buffer->buffer + buffer->offset;
+    }
+    //大于最大长度，重新分配内存
+    return NULL;
 }
-mcJSON_Bool printStr(unsigned char *str, printbuffer *buffer,mcJSON_Bool iskey)
+
+mcJSON_Bool printNumber(int *number, printbuffer *buffer)
+{
+    if (buffer == NULL)
+    {
+        return false;
+    }
+    unsigned char strNumber[10] = {0};
+    int length = sprintf(strNumber, "%d", *number);
+    unsigned char *current_print = getCurrentPointer(buffer, length);
+    if (current_print == NULL)
+    {
+        return false;
+    }
+    for (int i = 0; i < length; i++)
+    {
+        *current_print++ = strNumber[i];
+    }
+    buffer->offset += length;
+    return true;
+}
+
+mcJSON_Bool printStr(unsigned char *str, printbuffer *buffer, mcJSON_Bool iskey)
 {
     if (str == NULL || buffer == NULL)
     {
         return false;
     }
+    size_t needed = 0;
+    if (iskey)
+    {
+        needed = 3;
+    }
+    else
+    {
+        needed = 2;
+    }
 
-    unsigned char *current_print = getCurrentPointer(buffer);
+    unsigned char *current_print = getCurrentPointer(buffer, needed);
+    if (current_print == NULL)
+    {
+        return false;
+    }
     *current_print++ = '\"';
-    while(*str){
+    while (*str)
+    {
         *current_print++ = *str++;
         buffer->offset++;
     }
-    
+
     *current_print++ = '\"';
     if (iskey)
     {
         *current_print++ = ':';
-        buffer->offset += 3;
-    }else{
-        buffer->offset += 2;
     }
-    
-    
+
+    buffer->offset += needed;
     return true;
 }
-unsigned char *printObject(mcJSON *item, printbuffer *buffer)
+
+mcJSON_Bool printObject(mcJSON *item, printbuffer *buffer)
 {
+    //为了防止内存溢出，添加需要的空间大小
+    size_t needed = 0;
     unsigned char *current_print = buffer->buffer;
     item = item->child;
-    // int length = buffer->format ? 2:1;
     if (current_print != NULL)
     {
-        *current_print++ = '{';
-        buffer->offset++;
+        needed = buffer->format ? 2 : 1;
+        if (!buffer->format)
+        {
+            current_print = getCurrentPointer(buffer, needed);
+            if (current_print == NULL)
+            {
+                return false;
+            }
+
+            *current_print++ = '{';
+        }
+        buffer->offset += needed;
         while (item != NULL)
         {
-            //获取偏移过后的指针
-            if (printStr(item->key, buffer,true))
+            if (printStr(item->key, buffer, true))
             {
-                
-                printValue(item,buffer);
-
+                printValue(item, buffer);
                 //判断是否打印逗号
                 if (item->next != NULL)
-                {   
-                    current_print = getCurrentPointer(buffer);
+                {
+                    //获取偏移过后的指针
+                    needed = 1;
+                    current_print = getCurrentPointer(buffer, needed);
+                    if (current_print == NULL)
+                    {
+                        return false;
+                    }
                     *current_print++ = ',';
-                    buffer->offset++;
+                    buffer->offset += needed;
                 }
             }
+
             item = item->next;
         }
-        current_print = getCurrentPointer(buffer);
+        needed = 2;
+        current_print = getCurrentPointer(buffer, needed);
+        if (current_print == NULL)
+        {
+            return false;
+        }
         *current_print++ = '}';
         *current_print++ = '\0';
+        buffer->offset += needed;
+        return true;
     }
-    return buffer->buffer;
+    return false;
 }
 
-unsigned char *printValue(mcJSON *obj, printbuffer *buffer)
+mcJSON_Bool printValue(mcJSON *obj, printbuffer *buffer)
 {
-    unsigned char *result = NULL;
     //判断不同数据类型
     switch (obj->type)
     {
     case mcJSON_String:
-        /* code */
-
+        return printStr(obj->stringValue, buffer, false);
         break;
     case mcJSON_Object:
-        result = printObject(obj, buffer);
+        return printObject(obj, buffer);
+        break;
+    case mcJSON_Number:
+        return printNumber(&(obj->intValue), buffer);
         break;
     default:
         break;
     }
-    return result;
+    return false;
 }
 
 char *print(mcJSON *obj)
@@ -247,13 +309,25 @@ char *print(mcJSON *obj)
     printbuffer buffer;
     buffer.offset = 0;
     buffer.length = 512;
+    buffer.format = 0;
     buffer.buffer = malloc(sizeof(mcJSON) * buffer.length);
-    char *result = (char *)printValue(obj, &buffer);
-    return result;
-    //头打印
-    //打印key
-    //打印value
-    //尾部打印
+    if (!printValue(obj, &buffer))
+    {
+        goto fail;
+    }
+    //重新分配内存，不占用太多空间
+    char *printed = realloc(buffer.buffer, buffer.offset + 1);
+    buffer.buffer = NULL;
+    return printed;
+fail:
+    if (buffer.buffer != NULL)
+    {
+        free(buffer.buffer);
+    }
+    if (printed != NULL)
+    {
+        free(printed);
+    }
 }
 
 int main()
@@ -261,11 +335,12 @@ int main()
     mcJSON *mcjson_test = createObjectItem();
     addStringToObject(mcjson_test, "name", "Lili");
     addNumberToObject(mcjson_test, "age", 11);
+    addStringToObject(mcjson_test, "address", "beijing");
+    addNumberToObject(mcjson_test, "high", 190);
     //   deleteItem(mcjson_test);
     //   print(mcjson_test);
     // mcJSON *obj = getObjectItem(mcjson_test,"name");
-    char* printed = print(mcjson_test);
-    printf("%s",printed);
-
+    char *printed = print(mcjson_test);
+    printf("%s", printed);
     return 0;
 }
