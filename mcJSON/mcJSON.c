@@ -12,12 +12,21 @@ char *mcJSON_CopyStr(const char *const value)
     return new_value;
 }
 
-mcJSON *createObjectItem()
+mcJSON *new_item()
 {
     mcJSON *pointer = malloc(sizeof(mcJSON));
     if (pointer != NULL)
     {
         memset(pointer, '\0', sizeof(mcJSON));
+    }
+    return pointer;
+}
+
+mcJSON *createObjectItem()
+{
+    mcJSON *pointer = new_item();
+    if (pointer != NULL)
+    {
         pointer->type = mcJSON_Object;
     }
     return pointer;
@@ -25,7 +34,7 @@ mcJSON *createObjectItem()
 
 mcJSON *createStringItem(const char *const value)
 {
-    mcJSON *obj = createObjectItem();
+    mcJSON *obj = new_item();
     if (obj)
     {
         obj->type = mcJSON_String;
@@ -37,7 +46,7 @@ mcJSON *createStringItem(const char *const value)
 
 mcJSON *createNumberItem(double value)
 {
-    mcJSON *obj = createObjectItem();
+    mcJSON *obj = new_item();
     if (obj)
     {
         obj->type = mcJSON_Number;
@@ -329,18 +338,140 @@ fail:
         free(printed);
     }
 }
+unsigned char *getCurrentValue(parsebuffer *buffer){
+    return buffer->content + buffer->offset;
+}
+
+
+mcJSON *parseStr(parsebuffer *buffer,mcJSON *item)
+{
+    if (buffer == NULL)
+    {
+        return NULL;
+    }
+    unsigned char *value = getCurrentValue(buffer);
+
+    while (*value != '\"')
+    {
+        *(item->stringValue)++ = *value++;
+        buffer->offset++;
+    }
+    buffer->offset++;
+    *item->stringValue = '\0';
+    return item;
+}
+
+mcJSON_Bool *parseKey(parsebuffer *buffer, mcJSON *obj)
+{
+    if (buffer == NULL || obj == NULL)
+    {
+        return false;
+    }
+    unsigned char *key = getCurrentValue(buffer);
+    while (*key != '\"')
+    {
+        *(obj->key)++ = *key++;
+        buffer->offset++;
+    }
+    buffer->offset++;
+    *(obj->key) = '\0';
+    return true;
+}
+
+mcJSON_Bool *parseObject(parsebuffer *buffer,mcJSON *child)
+{
+    if (buffer == NULL)
+    {
+        return false;
+    }
+    unsigned char *current = NULL;
+    unsigned char *end = buffer->content + buffer->length;
+    mcJSON *item = NULL;
+    
+    while (*current != '}')
+    {
+        current = getCurrentValue(buffer);
+        item = new_item(buffer);
+        while (*current == '{' || *current == '\"')
+        {
+            current++;
+            buffer->offset++;
+        } 
+        if (parseKey(buffer, item) && *(getCurrentValue(buffer)) == ':')
+        {
+            current++;
+            buffer->offset++;
+            if (*current == '\"')
+            {
+                buffer->offset++;
+                parseStr(buffer,item);
+                item->type = mcJSON_String;
+            }
+            else if (*current == '{')
+            {
+                buffer->offset++;
+                parseObject(buffer,item);
+                item->type = mcJSON_Object;
+            }
+            else if (*current == '[')
+            {
+                /* code */
+            }else if(sizeof(*current) == sizeof(int) ||  sizeof(*current) == sizeof(double)){
+                
+            }
+            if (item == NULL)
+            {
+                goto fail;
+            }
+        }else{
+            goto fail;
+        }
+        if (child == NULL)
+        {
+            child = item;
+            child->prev = child;
+            child->next = NULL;
+        }
+        else
+        {
+            child->prev->next = item;
+            item->prev = child->prev;
+            item->next = NULL;
+        }
+        current += buffer->offset;
+    }
+    return true;
+    fail:
+        deleteItem(item);
+        free(item);
+        return NULL;
+}
+
+mcJSON *parse(const char *value)
+{
+    parsebuffer buffer;
+    buffer.content = (unsigned char *)value;
+    buffer.length = strlen(value);
+    buffer.offset = 0;
+    mcJSON *root = createObjectItem();
+    parseObject(&buffer,root->child);
+    return root;
+}
 
 int main()
 {
-    mcJSON *mcjson_test = createObjectItem();
-    addStringToObject(mcjson_test, "name", "Lili");
-    addNumberToObject(mcjson_test, "age", 11);
-    addStringToObject(mcjson_test, "address", "beijing");
-    addNumberToObject(mcjson_test, "high", 190);
-    //   deleteItem(mcjson_test);
-    //   print(mcjson_test);
+    // mcJSON *mcjson_test = createObjectItem();
+    // addStringToObject(mcjson_test, "name", "Lili");
+    // addNumberToObject(mcjson_test, "age", 11);
+    // addStringToObject(mcjson_test, "address", "beijing");
+    // addNumberToObject(mcjson_test, "high", 190);
+    // //   deleteItem(mcjson_test);
+    // //   print(mcjson_test);
+    // // mcJSON *obj = getObjectItem(mcjson_test,"name");
+    // char *printed = print(mcjson_test);
+    // printf("%s", printed);
+    char text[] = "{\"value\":1,\"timestamp\":\"2016-11-19T08:50:11\"}";
+    parse(text);
     // mcJSON *obj = getObjectItem(mcjson_test,"name");
-    char *printed = print(mcjson_test);
-    printf("%s", printed);
     return 0;
 }

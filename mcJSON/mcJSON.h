@@ -28,6 +28,15 @@ typedef struct printbuffer
     int length;
 } printbuffer;
 
+typedef struct parsebuffer
+{
+    const unsigned char* content;
+    //记录偏移量
+    int offset;
+    //记录最大长度
+    int length;
+} parsebuffer;
+
 mcJSON_Bool printValue(mcJSON *obj, printbuffer *buffer);
 void deleteItem(mcJSON *obj);
 mcJSON_Bool addObjToArray(mcJSON *obj,mcJSON *item,const char *const key);
